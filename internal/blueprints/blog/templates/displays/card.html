@@ -1,0 +1,12 @@
+<div style="border:1px solid var(--color-border);border-radius:6px;padding:1.25rem">
+  <p class="muted" style="font-size:.85em;margin:0 0 .4rem">{{ item.Date|godate:"January 2, 2006" }}</p>
+  <h3 style="margin:0 0 .6rem"><a href="{{ item.Permalink }}" style="text-decoration:none">{{ item.Title }}</a></h3>
+  {% if item.Tags %}
+  <p style="margin:0 0 .8rem">
+    {% for tag in item.Tags %}
+      <span style="display:inline-block;background:var(--color-surface-2);border-radius:4px;padding:0 .4rem;font-size:.8em">{{ tag }}</span>
+    {% endfor %}
+  </p>
+  {% endif %}
+  <a href="{{ item.Permalink }}">Read more &rarr;</a>
+</div>

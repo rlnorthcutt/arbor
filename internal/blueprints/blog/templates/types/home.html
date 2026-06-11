@@ -1,0 +1,24 @@
+{% extends "templates/layouts/base.html" %}
+{% block title %}{{ Site.Config.Site.Title }}{% endblock %}
+{% block body %}
+<section style="padding:3rem 0 2rem">
+  <h1>{{ Page.Title }}</h1>
+  <div class="content">{{ Page.HTMLContent|safe }}</div>
+</section>
+
+{% if Site.Index.ByType.blog %}
+<section>
+  <h2>Recent Posts</h2>
+  <div class="grid md-col-2 gap-4" style="margin-top:1rem">
+    {% for item in Site.Index.ByType.blog %}
+      {% if forloop.counter <= 4 %}
+        {% with item=item %}
+          {% include "templates/displays/card.html" %}
+        {% endwith %}
+      {% endif %}
+    {% endfor %}
+  </div>
+  <p style="margin-top:1.5rem"><a href="/blog/">View all posts &rarr;</a></p>
+</section>
+{% endif %}
+{% endblock %}

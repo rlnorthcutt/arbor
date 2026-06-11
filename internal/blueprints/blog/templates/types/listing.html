@@ -1,0 +1,27 @@
+{% extends "templates/layouts/base.html" %}
+{% block title %}{{ Page.Title }} | {{ Site.Config.Site.Title }}{% endblock %}
+{% block body %}
+<h1>{{ Page.Title }}</h1>
+
+{% if Items %}
+<div class="grid md-col-2 gap-4" style="margin-top:1.5rem">
+  {% for item in Items %}
+    {% with item=item %}
+      {% include "templates/displays/card.html" %}
+    {% endwith %}
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted">No posts yet.</p>
+{% endif %}
+
+{% if Pager %}
+  {% if Pager.HasPrev or Pager.HasNext %}
+  <nav class="d-flex gap-3 justify-between" style="margin-top:2rem;padding-top:1rem;border-top:1px solid var(--color-border)">
+    {% if Pager.HasPrev %}<a href="{{ Pager.PrevURL }}">&larr; Newer</a>{% endif %}
+    <span class="muted">Page {{ Pager.Current }} of {{ Pager.Total }}</span>
+    {% if Pager.HasNext %}<a href="{{ Pager.NextURL }}">Older &rarr;</a>{% endif %}
+  </nav>
+  {% endif %}
+{% endif %}
+{% endblock %}

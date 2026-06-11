@@ -1,0 +1,8 @@
+{% extends "templates/layouts/docs.html" %}
+{% block title %}{{ Page.Title }} | {{ Site.Config.Site.Title }}{% endblock %}
+{% block docs_body %}
+<article>
+  <h1>{{ Page.Title }}</h1>
+  <div class="content">{{ Page.HTMLContent|safe }}</div>
+</article>
+{% endblock %}

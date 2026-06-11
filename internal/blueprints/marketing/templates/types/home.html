@@ -1,0 +1,35 @@
+{% extends "templates/layouts/base.html" %}
+{% block title %}{{ Site.Config.Site.Title }} &mdash; {{ Page.Meta.Fields.tagline }}{% endblock %}
+{% block body %}
+
+<section class="full-width hero" style="background:var(--color-surface-1)">
+  <div class="container">
+    <h1>{{ Page.Title }}</h1>
+    <p style="font-size:1.25rem;color:var(--color-muted);margin:1rem auto 2rem;max-width:600px">{{ Page.Meta.Fields.tagline }}</p>
+    <a href="{{ Page.Meta.Fields.cta_url }}" role="button" style="font-size:1rem">{{ Page.Meta.Fields.cta_label }}</a>
+  </div>
+</section>
+
+<section id="features" class="full-width" style="padding:4rem 0">
+  <div class="container">
+    <h2 style="text-align:center">Why Arbor?</h2>
+    <div class="feature-grid">
+      {% for feature in Data.features.items %}
+      <div class="feature-card">
+        <div style="font-size:2rem;margin-bottom:.5rem">{{ feature.icon }}</div>
+        <h3 style="margin:0 0 .5rem">{{ feature.title }}</h3>
+        <p class="muted" style="margin:0">{{ feature.desc }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="full-width" style="padding:4rem 0;text-align:center;background:var(--color-surface-1)">
+  <div class="container">
+    <h2>Ready to get started?</h2>
+    <p class="muted" style="margin:1rem 0 2rem">Ship your site in minutes, not hours.</p>
+    <a href="{{ Page.Meta.Fields.cta_url }}" role="button">{{ Page.Meta.Fields.cta_label }} &rarr;</a>
+  </div>
+</section>
+{% endblock %}

@@ -9,6 +9,7 @@ Arbor sits between a Markdown-to-HTML converter and a full framework like Hugo. 
 - **Convention over configuration** — sensible defaults that work without explicit setup
 - **No magic** — template resolution, data access, and output paths are predictable and traceable
 - **Good errors, not strict errors** — warn clearly and continue where possible; fail hard only when continuing would produce broken output
+- **Speed and simplicity over flexibility** — Arbor trades some configurability for a much faster setup experience; it is not trying to be Hugo
 - **Your stack, your rules** — Arbor ships with Ivy + Lattice as its default CSS foundation, but imposes nothing on the user's own templates
 
 ---
@@ -20,10 +21,12 @@ Arbor sits between a Markdown-to-HTML converter and a full framework like Hugo. 
 | CLI, logging, config | `github.com/rlnorthcutt/cmdkit` | `logger`, `ui`, `sys` packages |
 | Configuration / Front Matter | `github.com/pelletier/go-toml` | TOML only |
 | Markdown Rendering | `github.com/yuin/goldmark` | CommonMark compliant |
-| Templating | `github.com/CloudyKit/jet` | Jet v6 |
+| Templating | `github.com/flosch/pongo2/v6` | Jinja2/Django-style syntax |
 | File Watching | `github.com/fsnotify/fsnotify` | Preview mode only |
 | Build Cache | Custom | SHA-256 hash index, `.arbor-cache.json` |
-| Default CSS | Ivy + Lattice + dark-mode-toggle | Bundled into `arbor init` scaffold |
+| Default CSS | Ivy + Lattice + dark-mode-toggle | Bundled into each blueprint |
+
+**Why Pongo2 over Jet:** Pongo2 uses Jinja2/Django template syntax (`{% block %}`, `{% extends %}`, `{% include %}`, `{{ variable }}`) that is immediately familiar to a large population of web developers and requires no ramp-up. It has HTML auto-escaping on by default (use `|safe` for trusted HTML), rich built-in filters (`|date`, `|truncatewords`, `|striptags`, etc.), and a well-understood template inheritance model. Template files use the `.html` extension, which editors handle natively.
 
 ---
 
@@ -33,19 +36,16 @@ Arbor uses all three cmdkit packages. No globals — everything flows through in
 
 ```go
 func main() {
-    // Parse top-level flags first
     root := flag.String("root", "./", "Project root directory")
     verbose := flag.Bool("verbose", false, "Enable verbose logging")
     flag.Parse()
 
-    // Instantiate — no global state
     log := logger.New(*verbose)
     userUI := ui.New(false).
         WithLogger(log).
         WithInterrupt(context.Background())
     defer userUI.StopSignal()
 
-    // Dispatch commands
     args := flag.Args()
     // ...
 }
@@ -62,7 +62,7 @@ func main() {
 | Missing required template, bad TOML | `log.Fatal("Template not found: %s", path)` |
 | Dev-only debugging | `log.Debug(...)` — remove before shipping |
 
-`log.Fatal` calls `os.Exit(1)` after printing — use it only for the hard-fail cases in §15.
+`log.Fatal` calls `os.Exit(1)` after printing — use it only for the hard-fail cases in §17.
 
 **Signal handling:** `userUI.WithInterrupt` is registered in the root command. The preview server's watcher loop and `http.Server` both receive `userUI.Ctx` so that Ctrl+C shuts everything down cleanly.
 
@@ -82,27 +82,30 @@ func main() {
 │   │   └── my-post.md
 │   └── about.md
 ├── templates/
-│   ├── layouts/             # Base HTML wrappers (base.jet, etc.)
+│   ├── layouts/             # Base HTML wrappers
+│   │   └── base.html
 │   ├── types/               # One template per content type
-│   │   ├── blog.jet
-│   │   └── page.jet         # Default fallback
+│   │   ├── blog.html
+│   │   └── page.html        # Default fallback
 │   ├── displays/            # Content rendering modes
-│   │   ├── card.jet
-│   │   ├── teaser.jet
-│   │   └── full.jet
+│   │   ├── card.html
+│   │   ├── teaser.html
+│   │   └── full.html
 │   └── partials/            # Structural UI shell fragments
-│       ├── header.jet
-│       ├── footer.jet
-│       └── nav.jet
+│       ├── header.html
+│       ├── footer.html
+│       └── nav.html
 ├── static/                  # Copied to /public as-is
-│   └── css/
-│       ├── ivy.css
-│       ├── ivy.extra.css
-│       ├── lattice.css
-│       ├── lattice.extra.css
-│       └── site.css         # User's own overrides
+│   ├── css/
+│   │   ├── ivy.full.css
+│   │   ├── lattice.full.css
+│   │   └── site.css         # User's own overrides
+│   └── js/
+│       └── dark-mode-toggle.js
 └── public/                  # Build output (gitignore)
 ```
+
+All template files use the `.html` extension. Pongo2 resolves them from the project root.
 
 ---
 
@@ -110,44 +113,55 @@ func main() {
 
 This is a load-bearing distinction.
 
-**Partials** (`templates/partials/`) are **structural UI shell fragments** — they build the page's chrome and have no specific knowledge of a `ContentItem`. They receive `.Site` and `.Data`. Examples: site header, nav bar, footer, cookie banner. You never pass a content item to a partial.
+**Partials** (`templates/partials/`) are **structural UI shell fragments** — they build the page's chrome and have no specific knowledge of a `ContentItem`. They receive `Site` and `Data`. Examples: site header, nav bar, footer, cookie banner. You never pass a content item to a partial.
 
-**Displays** (`templates/displays/`) are **content rendering modes** — they receive a `ContentItem` and render it in a particular visual format. This is the Drupal "view mode" concept: the same blog post can be rendered as a `card` (image + title + excerpt), a `teaser` (title + date + first paragraph), or `full` (complete rendered HTML). They are called from within listing pages or type templates, passed a specific item.
+**Displays** (`templates/displays/`) are **content rendering modes** — they receive a `ContentItem` and render it in a particular visual format. This is the Drupal "view mode" concept: the same blog post can be rendered as a `card` (image + title + excerpt), a `teaser` (title + date + first paragraph), or `full` (complete rendered HTML).
 
-**Rule of thumb:** If you're building a nav bar, use a partial. If you're displaying a piece of content in a list, use a display. They are never interchangeable.
+**Calling a display from a type template (Pongo2):**
+```html
+{% for item in Items %}
+  {% with item=item %}
+    {% include "templates/displays/teaser.html" %}
+  {% endwith %}
+{% endfor %}
+```
+
+The `{% with %}` block makes the loop variable available as a named binding inside the included display template. Displays and partials are never interchangeable.
 
 ---
 
 ## 6. Ivy + Lattice: The Default CSS Stack
 
-`arbor init` scaffolds `static/css/` with the Ivy + Lattice files and a starter `site.css`. The default `base.jet` layout already wires them in using the correct load order.
+Each blueprint scaffolds `static/css/` with the Ivy + Lattice files and a starter `site.css`. The default `base.html` layout already wires them in using the correct load order.
 
-**Default `base.jet` `<head>` block:**
+**Default `templates/layouts/base.html`:**
 ```html
-<link rel="stylesheet" href="/css/ivy.css">
-<link rel="stylesheet" href="/css/ivy.extra.css">
-<link rel="stylesheet" href="/css/lattice.css">
-<link rel="stylesheet" href="/css/lattice.extra.css">
-<link rel="stylesheet" href="/css/site.css">
-<script type="module" src="/js/dark-mode-toggle.js"></script>
-```
-
-**Default `base.jet` body structure:**
-```html
+<!DOCTYPE html>
+<html lang="{{ Site.Config.Site.Language }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ Site.Config.Site.Title }}{% endblock %}</title>
+  <link rel="stylesheet" href="/css/ivy.full.css">
+  <link rel="stylesheet" href="/css/lattice.full.css">
+  <link rel="stylesheet" href="/css/site.css">
+  <script type="module" src="/js/dark-mode-toggle.js"></script>
+</head>
 <body class="lattice">
-  {% include "partials/header.jet" %}
+  {% include "templates/partials/header.html" %}
   <main class="container">
-    {% block content %}{% endblock %}
+    {% block body %}{% endblock %}
   </main>
-  {% include "partials/footer.jet" %}
+  {% include "templates/partials/footer.html" %}
 </body>
+</html>
 ```
 
-**Default `partials/header.jet`:**
+**Default `templates/partials/header.html`:**
 ```html
 <header class="full-width">
   <div class="grid md-col-2 items-center p-3">
-    <div><a href="/">{{ Site.Config.Title }}</a></div>
+    <div><a href="/">{{ Site.Config.Site.Title }}</a></div>
     <nav class="d-flex justify-end gap-3">
       {% for item in Data.nav.items %}
         <a href="{{ item.url }}">{{ item.label }}</a>
@@ -158,7 +172,7 @@ This is a load-bearing distinction.
 </header>
 ```
 
-**Ivy token overrides** go in `static/css/site.css`. Never override `--color-bg` etc. directly in `:root` — always use the `-light`/`-dark` variant pairs:
+**Ivy token overrides** go in `static/css/site.css`. Always use the `-light`/`-dark` variant pairs:
 ```css
 :root {
   --color-primary-light: #2563eb;
@@ -200,8 +214,8 @@ type ContentMeta struct {
     fields map[string]any
 }
 
-func (m ContentMeta) Get(key string) (any, bool)  // raw access
-func (m ContentMeta) GetString(key string) string  // returns "" if missing or wrong type
+func (m ContentMeta) Get(key string) (any, bool)
+func (m ContentMeta) GetString(key string) string  // "" if missing or wrong type
 func (m ContentMeta) GetBool(key string) bool
 func (m ContentMeta) GetInt(key string) int
 func (m ContentMeta) Has(key string) bool
@@ -215,19 +229,29 @@ type SiteIndex struct {
 }
 ```
 
-Template usage: `{{ page.Meta.GetString("hero_image") }}` — never raw map access.
+**Template usage:**
+- `{{ Page.Meta.Fields.hero_image }}` — direct map access (preferred in templates; `Fields` is exported)
+- `{{ Page.Meta.GetString("hero_image") }}` — safe accessor from Go code; returns `""` if missing
+- `{{ Page.HTMLContent|safe }}` — render Goldmark HTML without escaping
+- `{{ Page.Date|godate:"January 2, 2006" }}` — formatted date using the custom `godate` filter with Go's reference time format
+
+Note: Pongo2 cannot call Go methods with arguments from templates. Use `Page.Meta.Fields.key` for direct map access in templates, and `meta.GetString("key")` in Go code.
 
 ---
 
 ## 8. Global Template Context
 
-Every template receives three top-level variables:
+Every template receives these top-level variables:
 
 | Variable | Type | Contents |
 |---|---|---|
-| `.Site` | `SiteContext` | `config.toml` fields at `.Site.Config` + the full `SiteIndex` at `.Site.Index` |
-| `.Page` | `*ContentItem` | Current page (nil on virtual listing pages) |
-| `.Data` | `map[string]any` | All `/data/*.toml` files, keyed by filename: `.Data.nav`, `.Data.team` |
+| `Site` | `SiteContext` | `config.toml` fields at `Site.Config` + the full `SiteIndex` at `Site.Index` |
+| `Page` | `*ContentItem` | Current page (nil on virtual listing pages) |
+| `Data` | `map[string]any` | All `/data/*.toml` files, keyed by filename: `Data.nav`, `Data.team` |
+| `Items` | `[]*ContentItem` | Published items for the current page (for listing pages: the current page's slice) |
+| `Pager` | `*Pager` | Pagination state (nil for non-listing pages) |
+
+Note: Pongo2 context variables are accessed without a leading dot — `Site.Config.Site.Title`, not `.Site.Config.Site.Title`.
 
 ---
 
@@ -239,7 +263,7 @@ title    = "My First Post"
 date     = 2025-06-15
 tags     = ["golang", "ssg"]
 draft    = false
-template = "templates/types/custom.jet"   # optional full-path override
+template = "templates/types/custom.html"   # optional full-path override
 
 [extra]
 hero_image = "/static/img/hero.jpg"
@@ -249,7 +273,7 @@ show_toc   = true
 Your **Markdown** content starts here.
 ```
 
-Fields under `[extra]` land in `ContentItem.Meta` and are accessed via `.Page.Meta.GetString("hero_image")`.
+Fields under `[extra]` land in `ContentItem.Meta` and are accessed via `{{ Page.Meta.GetString("hero_image") }}`.
 
 ---
 
@@ -258,8 +282,8 @@ Fields under `[extra]` land in `ContentItem.Meta` and are accessed via `.Page.Me
 For any `ContentItem`, the template resolves in this exact order — no exceptions:
 
 1. `frontmatter.template` is set → use that path directly
-2. `templates/types/{type}.jet` exists → use it (`type` = first subdirectory under `content/`)
-3. `templates/types/page.jet` → always the final fallback
+2. `templates/types/{type}.html` exists → use it (`type` = first subdirectory under `content/`)
+3. `templates/types/page.html` → always the final fallback
 
 For nested paths like `content/blog/series/post.md`, the type is always inferred from the **first subdirectory** (`blog`). Nesting depth does not affect resolution.
 
@@ -297,28 +321,43 @@ Watch out for this thing.
 
 1. **Pre-pass (before Goldmark):** scan for `{{% ... %}}` patterns, extract and store each shortcode call with its parameters into a map keyed by a unique placeholder token (`__ARBOR_SC_0__`, etc.), and replace the shortcode syntax in the Markdown source with the token.
 2. **Goldmark renders** the Markdown with tokens in place (they survive as plain text inside the HTML).
-3. **Post-pass (after Goldmark):** scan rendered HTML for placeholder tokens, render each corresponding Jet partial, substitute.
+3. **Post-pass (after Goldmark):** scan rendered HTML for placeholder tokens, render each corresponding Pongo2 partial, substitute.
 
-Parameters are `key=value` pairs parsed from the shortcode tag. The called partial receives them as local variables alongside `.Site` and `.Data`. If a body was provided, it arrives as `body` (pre-rendered HTML string).
+Parameters are `key=value` pairs parsed from the shortcode tag. The called partial receives them as template variables alongside `Site` and `Data`. If a body was provided, it arrives as `body` (pre-rendered HTML string).
+
+Template files referenced in shortcodes use the `.html` extension and are resolved from the project root.
 
 ---
 
 ## 13. Pagination
 
-A `paginate` function is available inside type templates:
+Pagination is pre-computed by the renderer before the template executes. Listing pages receive `Items` (the slice for the current page only) and `Pager` (pagination state) as template variables — no function call is required inside the template.
 
-```
-{% pages, pager := paginate(Site.Index.ByType["blog"], Site.Config.PageSize) %}
+The builder generates one output file per pagination page for each content type.
 
-{% for item in pages %}
-  {% include "displays/teaser.jet" with item=item %}
+**Example listing template (`templates/types/blog.html`):**
+```html
+{% extends "templates/layouts/base.html" %}
+
+{% block title %}Blog{% endblock %}
+
+{% block body %}
+<h1>Blog Posts</h1>
+
+{% for item in Items %}
+  {% with item=item %}
+    {% include "templates/displays/teaser.html" %}
+  {% endwith %}
 {% endfor %}
 
-{% if pager.HasPrev %}<a href="{{ pager.PrevURL }}">← Previous</a>{% endif %}
-{% if pager.HasNext %}<a href="{{ pager.NextURL }}">Next →</a>{% endif %}
+<nav class="pagination">
+  {% if Pager.HasPrev %}<a href="{{ Pager.PrevURL }}">← Previous</a>{% endif %}
+  {% if Pager.HasNext %}<a href="{{ Pager.NextURL }}">Next →</a>{% endif %}
+</nav>
+{% endblock %}
 ```
 
-`pager` fields: `Current` (1-indexed), `Total`, `HasPrev`, `HasNext`, `PrevURL`, `NextURL`.
+**`Pager` fields:** `Current` (1-indexed), `Total`, `HasPrev`, `HasNext`, `PrevURL`, `NextURL`.
 
 Output convention: `public/blog/index.html`, `public/blog/page/2/index.html`, etc.
 
@@ -335,8 +374,8 @@ Arbor maintains `.arbor-cache.json` — a map of `source_path → sha256_hash` f
 | Changed file | Action |
 |---|---|
 | A content file | Re-render that `ContentItem` only |
-| A type or display template | Re-render all items using that template |
-| A partial | Re-render all items (partials can be used anywhere) |
+| A type or display template (`.html`) | Re-render all items using that template |
+| A partial (`.html`) | Re-render all items (partials can be used anywhere) |
 | `config.toml` or any `data/*.toml` | Full rebuild (global context changed) |
 | A static asset | Copy that file only |
 
@@ -353,6 +392,8 @@ arbor [OPTIONS] COMMAND
 
 Commands:
   init          Initialize a new Arbor project in the current directory
+                Flags: --blueprint  Site blueprint to use (default: blog)
+                                    Options: blog, marketing, docs
   new           Create a new content file with scaffolded front matter
                 Usage: arbor new [CONTENTTYPE] [FILENAME]
                 Example: arbor new blog my-first-post
@@ -362,8 +403,6 @@ Commands:
   preview       Build, serve locally, and live-reload on changes
                 Flags: --port     Local port (default: 8080)
   help          Show this help message
-  demo*         Generate demo content (*not yet implemented)
-  update*       Self-update the arbor binary (*not yet implemented)
 
 Global Options:
   -r, --root    Project root directory (default: ./)
@@ -399,7 +438,7 @@ Both the file server and WebSocket server receive `userUI.Ctx`, so Ctrl+C trigge
 **Fail hard (`log.Fatal` → exit 1):**
 - `frontmatter.template` path does not exist on disk
 - TOML front matter is syntactically invalid
-- A Jet template has a parse error (not a missing variable — a broken template)
+- A Pongo2 template has a parse error (not a missing variable — a broken template)
 - `config.toml` is missing or unparseable
 - Output directory cannot be created or written to
 
@@ -427,36 +466,136 @@ email       = "you@example.com"
 
 ---
 
-## 19. Development Phases
+## 19. Site Blueprints
+
+A **blueprint** is a complete project scaffold optimized for a specific use case. Blueprints are embedded in the `arbor` binary and deployed by `arbor init --blueprint <name>`. The default blueprint is `blog`.
+
+### Available Blueprints
+
+| Blueprint | Use Case | Key Characteristics |
+|---|---|---|
+| `blog` | Personal blog or journal | Post listing, tags, RSS-friendly structure, author bio |
+| `marketing` | Open source project homepage or small business | Hero section, features grid, CTA, testimonials, minimal nav |
+| `docs` | Open source project documentation | Sidebar nav, versioned sections, previous/next links, code-heavy layouts |
+
+### Blueprint Structure
+
+Blueprints live in `internal/blueprints/`:
+
+```text
+internal/blueprints/
+├── base/                   # Shared static assets copied by every blueprint
+│   └── static/
+│       ├── css/            # ivy.full.css, lattice.full.css, site.css
+│       └── js/             # dark-mode-toggle.js
+├── blog/
+│   ├── config.toml
+│   ├── content/            # Example posts demonstrating typical content
+│   ├── data/               # nav.toml
+│   └── templates/          # Layouts and types designed for a blog
+├── marketing/
+│   ├── config.toml
+│   ├── content/            # Hero, features, CTA as content items
+│   ├── data/               # nav.toml, features.toml
+│   └── templates/          # Landing page layout, section types
+└── docs/
+    ├── config.toml
+    ├── content/            # Getting started, API reference examples
+    ├── data/               # nav.toml with sidebar hierarchy
+    └── templates/          # Doc layout with sidebar, prev/next nav
+```
+
+### `arbor init` Behavior
+
+`arbor init` (or `arbor init --blueprint blog`):
+
+1. Copies `base/` static assets to the destination
+2. Copies blueprint-specific files on top (blueprint files take precedence over base files)
+3. Never overwrites files that already exist in the destination directory
+4. Reports each created file with `log.Success`
+5. Prints a getting-started message at completion
+
+### Blueprint Design Principles
+
+- **Runnable out of the box** — `arbor init && arbor preview` should produce a complete, navigable site with no additional configuration
+- **Real content, not Lorem Ipsum** — example content should reflect the actual use case (a blog post about blogging, a docs page about getting started)
+- **Annotated templates** — each template has a short top comment explaining its role and the variables it expects
+- **Minimal CSS customization** — start from Ivy + Lattice defaults; override only what the use case demands via `static/css/site.css`
+
+---
+
+## 20. Pongo2 Renderer
+
+The renderer holds a single `*pongo2.TemplateSet` created once at construction time and reused for all renders — not per-call.
+
+```go
+type Renderer struct {
+    projectRoot string
+    set         *pongo2.TemplateSet
+    log         *logger.Logger
+}
+
+func New(projectRoot string, log *logger.Logger) *Renderer {
+    loader := pongo2.NewSandboxedFilesystemLoader(projectRoot)
+    set := pongo2.NewSet("arbor", loader)
+    return &Renderer{projectRoot: projectRoot, set: set, log: log}
+}
+```
+
+Templates are loaded via `set.FromCache()`, which parses and caches on first access:
+
+```go
+tmpl, err := r.set.FromCache("templates/types/blog.html")
+```
+
+The template context is a `pongo2.Context` (which is `map[string]interface{}`):
+
+```go
+ctx := pongo2.Context{
+    "Site":  vars.Site,
+    "Page":  vars.Page,
+    "Data":  vars.Data,
+    "Items": vars.Items,
+    "Pager": vars.Pager,
+}
+var buf bytes.Buffer
+err = tmpl.ExecuteWriter(ctx, &buf)
+```
+
+Pongo2 uses the `SandboxedFilesystemLoader` to prevent template path traversal outside the project root.
+
+---
+
+## 21. Development Phases
 
 | Phase | Focus | Key Deliverables |
 |---|---|---|
 | 1 | Foundation | `cmdkit` wiring, `init` command, config loader, directory scaffold, Ivy+Lattice copy |
 | 2 | Parser & Indexer | Front matter extraction, Goldmark, `ContentItem` + `SiteIndex` build |
-| 3 | Jet Renderer | Template resolution cascade, variable injection, working `build` command |
+| 3 | Pongo2 Renderer | Template resolution cascade, Pongo2 context injection, `build` command working end-to-end |
 | 4 | Preview Server | `fsnotify` watcher, `http.FileServer`, WebSocket live reload, incremental cache |
-| 5 | Shortcodes | Two-pass pre/post-processor, param passing to Jet partials |
-| 6 | Pagination | `paginate()` helper, paginated output generation |
-| 7 | `new` Command + Polish | Content scaffolding, `--force`, error message refinement, demo content |
+| 5 | Shortcodes | Two-pass pre/post-processor, param passing to Pongo2 partials |
+| 6 | Pagination | Pre-computed `Pager` struct, multi-page listing generation |
+| 7 | `new` Command + Polish | Content scaffolding, `--force`, error message refinement |
+| 8 | Site Blueprints | `blog`, `marketing`, `docs` blueprints, `--blueprint` flag on `init`, `base/` shared assets |
 
 ---
 
-## 20. `go.mod` Starting Point
+## 22. `go.mod` Reference
 
 ```go
-module github.com/yourusername/arbor
+module github.com/rlnorthcutt/arbor
 
 go 1.22
 
 require (
-    github.com/rlnorthcutt/cmdkit  v0.0.0-...
-    github.com/pelletier/go-toml   v1.9.5
-    github.com/yuin/goldmark       v1.7.4
-    github.com/CloudyKit/jet/v6    v6.2.0
-    github.com/fsnotify/fsnotify   v1.7.0
+    github.com/rlnorthcutt/cmdkit   v0.0.0-...
+    github.com/pelletier/go-toml    v1.9.5
+    github.com/yuin/goldmark        v1.7.4
+    github.com/flosch/pongo2/v6     v6.0.0
+    github.com/fsnotify/fsnotify    v1.7.0
+    github.com/gorilla/websocket    v1.5.1
 )
 ```
 
 ---
-
-

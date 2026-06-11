@@ -1,0 +1,21 @@
+{% extends "templates/layouts/base.html" %}
+{% block title %}{{ Page.Title }} | {{ Site.Config.Site.Title }}{% endblock %}
+{% block body %}
+<article>
+  <header style="margin-bottom:2rem">
+    <h1>{{ Page.Title }}</h1>
+    <p class="muted">
+      <time>{{ Page.Date|godate:"January 2, 2006" }}</time>
+      {% if Page.Tags %}
+        &mdash;
+        {% for tag in Page.Tags %}
+          <span style="display:inline-block;background:var(--color-surface-2);border-radius:4px;padding:0 .4rem;font-size:.85em">{{ tag }}</span>
+        {% endfor %}
+      {% endif %}
+    </p>
+  </header>
+  <div class="content">
+    {{ Page.HTMLContent|safe }}
+  </div>
+</article>
+{% endblock %}

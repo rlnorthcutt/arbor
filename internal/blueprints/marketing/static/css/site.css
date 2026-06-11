@@ -1,0 +1,22 @@
+:root {
+  --lat-container-width: 1100px;
+}
+.hero {
+  padding: 5rem 0 4rem;
+  text-align: center;
+}
+.hero h1 {
+  font-size: 3rem;
+  line-height: 1.15;
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+.feature-card {
+  padding: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}

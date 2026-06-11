@@ -1,0 +1,16 @@
+{% extends "templates/layouts/base.html" %}
+{% block body %}
+<div class="container docs-layout">
+  <aside class="docs-sidebar">
+    <strong style="display:block;margin-bottom:.75rem;font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted)">Navigation</strong>
+    <nav>
+      {% for item in Data.nav.sidebar %}
+        <a href="{{ item.url }}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+  </aside>
+  <div class="docs-content">
+    {% block docs_body %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

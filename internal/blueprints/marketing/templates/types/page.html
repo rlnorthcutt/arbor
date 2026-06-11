@@ -1,0 +1,8 @@
+{% extends "templates/layouts/base.html" %}
+{% block title %}{{ Page.Title }} | {{ Site.Config.Site.Title }}{% endblock %}
+{% block body %}
+<div class="container" style="padding:3rem 0;max-width:800px">
+  <h1>{{ Page.Title }}</h1>
+  <div class="content">{{ Page.HTMLContent|safe }}</div>
+</div>
+{% endblock %}

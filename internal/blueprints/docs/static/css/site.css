@@ -1,0 +1,32 @@
+:root {
+  --lat-container-width: 1200px;
+}
+.docs-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 2rem;
+  align-items: start;
+  padding: 2rem 0 4rem;
+}
+.docs-sidebar {
+  position: sticky;
+  top: 4rem;
+  border-right: 1px solid var(--color-border);
+  padding-right: 1.5rem;
+}
+.docs-sidebar nav a {
+  display: block;
+  padding: .3rem 0;
+  text-decoration: none;
+  color: var(--color-text);
+}
+.docs-sidebar nav a:hover {
+  color: var(--color-primary);
+}
+.docs-content {
+  min-width: 0;
+}
+@media (max-width: 768px) {
+  .docs-layout { grid-template-columns: 1fr; }
+  .docs-sidebar { position: static; border-right: none; padding-right: 0; border-bottom: 1px solid var(--color-border); padding-bottom: 1rem; margin-bottom: 1rem; }
+}

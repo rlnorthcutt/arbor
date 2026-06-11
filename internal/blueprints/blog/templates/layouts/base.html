@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="{{ Site.Config.Site.Language }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ Site.Config.Site.Title }}{% endblock %}</title>
+  <link rel="stylesheet" href="/css/ivy.full.css">
+  <link rel="stylesheet" href="/css/lattice.full.css">
+  <link rel="stylesheet" href="/css/site.css">
+  <script type="module" src="/js/dark-mode-toggle.js"></script>
+  {% block head %}{% endblock %}
+</head>
+<body class="lattice">
+  {% include "templates/partials/header.html" %}
+  <main class="container" style="padding-top:2rem;padding-bottom:4rem">
+    {% block body %}{% endblock %}
+  </main>
+  {% include "templates/partials/footer.html" %}
+</body>
+</html>

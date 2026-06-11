@@ -1,0 +1,18 @@
+{% extends "templates/layouts/base.html" %}
+{% block title %}{{ Site.Config.Site.Title }}{% endblock %}
+{% block body %}
+<div class="container" style="padding:3rem 0">
+  <h1>{{ Page.Title }}</h1>
+  <div class="content">{{ Page.HTMLContent|safe }}</div>
+  {% if Site.Index.ByType.docs %}
+  <div style="margin-top:2rem">
+    <h2>Documentation</h2>
+    <ul>
+      {% for item in Site.Index.ByType.docs %}
+        <li><a href="{{ item.Permalink }}">{{ item.Title }}</a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

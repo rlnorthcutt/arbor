@@ -1,0 +1,11 @@
+<header class="full-width" style="position:sticky;top:0;z-index:100;background:var(--color-bg);border-bottom:1px solid var(--color-border)">
+  <div class="container d-flex items-center justify-between" style="padding:.75rem 1rem">
+    <a href="/" style="font-weight:700;text-decoration:none">{{ Site.Config.Site.Title }}</a>
+    <nav class="d-flex gap-4 items-center">
+      {% for item in Data.nav.items %}
+        <a href="{{ item.url }}" style="text-decoration:none">{{ item.label }}</a>
+      {% endfor %}
+      <dark-mode-toggle></dark-mode-toggle>
+    </nav>
+  </div>
+</header>

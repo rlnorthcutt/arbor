@@ -1,0 +1,14 @@
+[[items]]
+icon  = "⚡"
+title = "Blazing Fast"
+desc  = "Generates thousands of pages in milliseconds."
+
+[[items]]
+icon  = "🎯"
+title = "Convention-Driven"
+desc  = "Sensible defaults mean less config, more writing."
+
+[[items]]
+icon  = "🔧"
+title = "Easy to Extend"
+desc  = "Familiar Jinja2-style templates anyone can learn."

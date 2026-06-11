@@ -1,0 +1,13 @@
+[site]
+title       = "My Project"
+base_url    = "https://example.com"
+language    = "en"
+page_size   = 10
+
+[build]
+draft_mode  = false
+output_dir  = "public"
+
+[author]
+name        = "Your Name"
+email       = "you@example.com"

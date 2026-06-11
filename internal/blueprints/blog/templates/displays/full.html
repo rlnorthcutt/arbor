@@ -1,0 +1,5 @@
+<article>
+  <h1>{{ item.Title }}</h1>
+  <p class="muted"><time>{{ item.Date|godate:"January 2, 2006" }}</time></p>
+  <div class="content">{{ item.HTMLContent|safe }}</div>
+</article>

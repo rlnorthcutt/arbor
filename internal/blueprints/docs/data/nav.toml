@@ -1,0 +1,27 @@
+[[items]]
+label = "Home"
+url   = "/"
+
+[[items]]
+label = "Docs"
+url   = "/docs/"
+
+[[items]]
+label = "GitHub"
+url   = "https://github.com"
+
+[[sidebar]]
+label = "Getting Started"
+url   = "/docs/getting-started.html"
+
+[[sidebar]]
+label = "Configuration"
+url   = "/docs/configuration.html"
+
+[[sidebar]]
+label = "Templates"
+url   = "/docs/templates.html"
+
+[[sidebar]]
+label = "CLI Reference"
+url   = "/docs/cli-reference.html"

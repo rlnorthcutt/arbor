@@ -1,0 +1,11 @@
+[[items]]
+label = "Features"
+url   = "/#features"
+
+[[items]]
+label = "About"
+url   = "/about.html"
+
+[[items]]
+label = "GitHub"
+url   = "https://github.com"
