@@ -11,6 +11,7 @@ import (
 
 	"github.com/pelletier/go-toml"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
 )
 
@@ -142,7 +143,17 @@ func ParseFile(path, contentDir, outputDir string) (*ContentItem, error) {
 
 	// Render Markdown → HTML
 	var htmlBuf bytes.Buffer
-	md := goldmark.New(goldmark.WithRendererOptions(html.WithUnsafe()))
+	md := goldmark.New(
+		goldmark.WithExtensions(
+			extension.Table,
+			extension.Strikethrough,
+			extension.TaskList,
+			extension.Footnote,
+			extension.DefinitionList,
+			extension.Linkify,
+		),
+		goldmark.WithRendererOptions(html.WithUnsafe()),
+	)
 	if err := md.Convert([]byte(markdown), &htmlBuf); err != nil {
 		return nil, fmt.Errorf("rendering markdown in %s: %w", path, err)
 	}
