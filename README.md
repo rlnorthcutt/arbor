@@ -43,11 +43,16 @@ Commands:
            Usage: arbor new [TYPE] [NAME]
            Example: arbor new blog my-post → content/blog/my-post.md
   build    Build the site to public/
-           --force  Ignore cache, full rebuild
+           --force         Ignore cache, full rebuild
+           --no-minify     Disable CSS/JS minification (default: enabled)
+           --no-aggregate  Disable CSS/JS bundling (default: enabled)
   preview  Build and serve locally with live reload
-           --port   Port to serve on (default: 8080)
-           --force  Force full rebuild before serving
+           --port          Port to serve on (default: 8080)
+           --force         Force full rebuild before serving
+           --no-minify     Disable minification during preview
+           --no-aggregate  Disable bundling during preview
   check    Validate config, templates, and content without building
+  version  Print the version
   help     Show this message
 
 Global options:
@@ -161,6 +166,7 @@ Every template receives:
 | `Data` | `map[string]any` | All `data/*.toml` files by filename |
 | `Items` | `[]*ContentItem` | All published items of the current type |
 | `Pager` | `*Pager` | Pagination state on listing pages (nil otherwise) |
+| `Assets` | `*AssetTags` | Pre-built `<link>` and `<script>` HTML strings (`Assets.CSS`, `Assets.JS`) |
 
 ### Useful patterns
 
@@ -279,6 +285,10 @@ output_dir = "public"
 [author]
 name  = "Your Name"
 email = "you@example.com"
+
+[assets]
+aggregate = true        # bundle CSS/JS (default: true for build, false for preview)
+minify    = true        # minify bundles (default: true for build, false for preview)
 ```
 
 ---
@@ -294,6 +304,7 @@ Arbor caches a SHA-256 hash of every source file in `.arbor-cache.json`. On subs
 | A partial | Full rebuild (partials can appear anywhere) |
 | `config.toml` or any data file | Full rebuild |
 | A static asset | Copy that file only |
+| A CSS/JS source file (when aggregating) | Re-processed into the bundle on next build |
 
 `arbor build --force` ignores the cache and rebuilds everything.
 
@@ -310,6 +321,81 @@ Every blueprint ships with [Ivy](https://github.com/rlnorthcutt/ivy) (design tok
   --font-sans: "Your Font", system-ui, sans-serif;
   --lat-container-width: 1100px;
 }
+```
+
+---
+
+## Asset Aggregation & Minification
+
+Arbor can bundle CSS and JS files into single outputs with cache-busting query strings, and optionally minify them for production.
+
+**Default behavior:**
+
+| Command | Aggregate | Minify |
+|---|---|---|
+| `arbor build` | yes | yes |
+| `arbor preview` | no | no |
+
+Override per-run with `--no-aggregate` / `--no-minify`, or set a project default in `config.toml`:
+
+```toml
+[assets]
+aggregate = true   # bundle CSS/JS files into one output each
+minify    = true   # minify the output
+```
+
+### How bundling works
+
+When aggregation is enabled, Arbor:
+
+1. Reads all `.css` files from `static/css/` (alphabetically) → writes `public/css/bundle.css`
+2. Reads all `.js` files from `static/js/` (alphabetically) → writes `public/js/bundle.js`
+3. Appends a short content hash as a query string (`?v=deadbeef`) for cache-busting
+4. Skips copying the individual source files to `public/` (they are already bundled)
+
+When aggregation is disabled, each file is copied to `public/` as-is and linked individually.
+
+### Customising bundles with `assets.toml`
+
+For full control over bundle order, multiple outputs, or non-default file paths, create an `assets.toml` at the project root:
+
+```toml
+[[bundle]]
+name    = "css/bundle.css"
+type    = "css"
+sources = [
+  "static/css/ivy.full.css",
+  "static/css/lattice.full.css",
+  "static/css/site.css",
+]
+
+[[bundle]]
+name    = "js/bundle.js"
+type    = "js"
+sources = [
+  "static/js/dark-mode-toggle.js",
+  "static/js/app.js",
+]
+```
+
+Each `[[bundle]]` entry controls one output file. `name` is the output path relative to `public/`. When `assets.toml` is present it takes precedence over the default scan of `static/css/` and `static/js/`.
+
+### Using asset tags in templates
+
+The `Assets` variable is available in every template as pre-built HTML strings:
+
+```html
+{{ Assets.CSS|safe }}   {{# renders <link rel="stylesheet" ...> tags #}}
+{{ Assets.JS|safe }}    {{# renders <script src="..."> tags #}}
+```
+
+Blueprint base layouts already include these in `<head>`. If you build a custom layout, add them yourself:
+
+```html
+<head>
+  {{ Assets.CSS|safe }}
+  {{ Assets.JS|safe }}
+</head>
 ```
 
 ---
