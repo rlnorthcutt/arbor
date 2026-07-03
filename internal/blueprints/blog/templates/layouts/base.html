@@ -4,10 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}{{ Site.Config.Site.Title }}{% endblock %}</title>
-  <link rel="stylesheet" href="/css/ivy.full.css">
-  <link rel="stylesheet" href="/css/lattice.full.css">
-  <link rel="stylesheet" href="/css/site.css">
-  <script type="module" src="/js/dark-mode-toggle.js"></script>
+  {{ Assets.CSS|safe }}
+  {{ Assets.JS|safe }}
   {% block head %}{% endblock %}
 </head>
 <body class="lattice">

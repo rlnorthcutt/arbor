@@ -32,13 +32,20 @@ type Pager struct {
 	NextURL string
 }
 
+// AssetTags holds pre-built HTML strings for CSS and JS includes.
+type AssetTags struct {
+	CSS string // one or more <link> tags
+	JS  string // one or more <script> tags
+}
+
 // TemplateVars holds all variables passed to a Pongo2 template.
 type TemplateVars struct {
-	Site  *SiteContext
-	Page  *content.ContentItem
-	Data  map[string]any
-	Items []*content.ContentItem
-	Pager *Pager
+	Site   *SiteContext
+	Page   *content.ContentItem
+	Data   map[string]any
+	Items  []*content.ContentItem
+	Pager  *Pager
+	Assets *AssetTags
 }
 
 // Renderer handles Pongo2 template rendering.
@@ -185,11 +192,12 @@ func (r *Renderer) CheckTemplates(tmplDir string) map[string]error {
 // buildContext converts TemplateVars to a pongo2.Context.
 func (r *Renderer) buildContext(vars TemplateVars) pongo2.Context {
 	return pongo2.Context{
-		"Site":  vars.Site,
-		"Page":  vars.Page,
-		"Data":  vars.Data,
-		"Items": vars.Items,
-		"Pager": vars.Pager,
+		"Site":   vars.Site,
+		"Page":   vars.Page,
+		"Data":   vars.Data,
+		"Items":  vars.Items,
+		"Pager":  vars.Pager,
+		"Assets": vars.Assets,
 	}
 }
 

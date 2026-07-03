@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/pelletier/go-toml"
+	"github.com/rlnorthcutt/arbor/internal/assets"
 	"github.com/rlnorthcutt/arbor/internal/cache"
 	"github.com/rlnorthcutt/arbor/internal/config"
 	"github.com/rlnorthcutt/arbor/internal/content"
@@ -25,15 +26,21 @@ import (
 
 // Builder orchestrates the full site build pipeline.
 type Builder struct {
-	projectRoot string
-	config      *config.Config
-	log         *logger.Logger
-	cache       *cache.Cache
+	projectRoot     string
+	config          *config.Config
+	log             *logger.Logger
+	cache           *cache.Cache
+	minifyAssets    bool
+	aggregateAssets bool
+	bundledSources  map[string]bool   // absolute paths of static files included in a bundle
+	processedAssets map[string]string // bundle.Name → versioned URL
 }
 
 // BuildOptions controls build behavior.
 type BuildOptions struct {
-	Force bool // ignore cache, full rebuild
+	Force           bool // ignore cache, full rebuild
+	MinifyAssets    bool
+	AggregateAssets bool
 }
 
 // New creates a new Builder, loading config from the project root.
@@ -59,6 +66,11 @@ func New(projectRoot string, log *logger.Logger) (*Builder, error) {
 
 // Build runs the full build pipeline.
 func (b *Builder) Build(ctx context.Context, opts BuildOptions) error {
+	b.minifyAssets = opts.MinifyAssets
+	b.aggregateAssets = opts.AggregateAssets
+	b.bundledSources = make(map[string]bool)
+	b.processedAssets = make(map[string]string)
+
 	if opts.Force {
 		b.cache.Invalidate()
 		b.log.Info("Force rebuild: cache invalidated")
@@ -110,7 +122,14 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) error {
 		}
 	}
 
-	// Step 4: Render content items
+	// Step 4: Compute asset context, then render content items
+	staticDir := filepath.Join(b.projectRoot, "static")
+	assetTags, err := b.computeAssetContext(staticDir, outputDir)
+	if err != nil {
+		b.log.Warn("Asset context computation failed: %v", err)
+		assetTags = &renderer.AssetTags{}
+	}
+
 	r := renderer.New(b.projectRoot, b.log)
 	site := &renderer.SiteContext{
 		Config: b.config,
@@ -168,10 +187,11 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) error {
 		}
 
 		vars := renderer.TemplateVars{
-			Site:  site,
-			Page:  item,
-			Data:  data,
-			Items: index.ByType[item.Type],
+			Site:   site,
+			Page:   item,
+			Data:   data,
+			Items:  index.ByType[item.Type],
+			Assets: assetTags,
 		}
 
 		html, err := r.Render(item, vars)
@@ -209,7 +229,7 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) error {
 	b.log.Info("Built %d pages, skipped %d unchanged", built, skipped)
 
 	// Step 5: Auto-generate listing pages for types without a manual index
-	listingBuilt, err := b.buildListingPages(ctx, index, r, site, data)
+	listingBuilt, err := b.buildListingPages(ctx, index, r, site, data, assetTags)
 	if err != nil {
 		return fmt.Errorf("building listing pages: %w", err)
 	}
@@ -217,8 +237,7 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) error {
 		b.log.Info("Auto-generated %d listing page(s)", listingBuilt)
 	}
 
-	// Step 6: Copy static files
-	staticDir := filepath.Join(b.projectRoot, "static")
+	// Step 6: Copy static files (skips sources already written as bundles)
 	if _, err := os.Stat(staticDir); err == nil {
 		if err := b.copyStatic(staticDir, outputDir); err != nil {
 			return fmt.Errorf("copying static files: %w", err)
@@ -233,6 +252,83 @@ func (b *Builder) Build(ctx context.Context, opts BuildOptions) error {
 	}
 
 	return nil
+}
+
+// computeAssetContext builds the HTML tag strings for CSS and JS includes.
+// When aggregating, it processes bundles immediately (writing files to outputDir)
+// so that cache-busting hashes are available for templates. When not aggregating,
+// it lists individual static files and builds individual include tags.
+func (b *Builder) computeAssetContext(staticDir, outputDir string) (*renderer.AssetTags, error) {
+	if !b.aggregateAssets {
+		cssFiles, jsFiles := assets.ListStaticAssets(staticDir)
+		var cssLinks, jsLinks strings.Builder
+		for _, f := range cssFiles {
+			cssLinks.WriteString(`<link rel="stylesheet" href="/` + filepath.ToSlash(f) + `">` + "\n")
+		}
+		for _, f := range jsFiles {
+			jsLinks.WriteString(`<script src="/` + filepath.ToSlash(f) + `"></script>` + "\n")
+		}
+		return &renderer.AssetTags{
+			CSS: strings.TrimRight(cssLinks.String(), "\n"),
+			JS:  strings.TrimRight(jsLinks.String(), "\n"),
+		}, nil
+	}
+
+	// Aggregate mode: load or compute bundles, then process them.
+	bundles, err := b.loadAssetManifest(staticDir)
+	if err != nil {
+		return nil, err
+	}
+
+	proc := assets.NewProcessor()
+	processed, err := proc.ProcessBundles(bundles, outputDir, b.minifyAssets)
+	if err != nil {
+		return nil, fmt.Errorf("processing asset bundles: %w", err)
+	}
+	b.processedAssets = processed
+
+	// Track which source files were bundled so copyStatic can skip them.
+	for _, bundle := range bundles {
+		for _, src := range bundle.Sources {
+			b.bundledSources[src] = true
+		}
+	}
+
+	// Build tag HTML from processed bundle URLs.
+	var cssLinks, jsLinks strings.Builder
+	for _, bundle := range bundles {
+		url, ok := processed[bundle.Name]
+		if !ok {
+			url = "/" + bundle.Name
+		}
+		switch bundle.Type {
+		case "css":
+			cssLinks.WriteString(`<link rel="stylesheet" href="` + url + `">` + "\n")
+		case "js":
+			jsLinks.WriteString(`<script src="` + url + `"></script>` + "\n")
+		}
+	}
+
+	b.log.Info("Processed %d asset bundle(s)", len(bundles))
+
+	return &renderer.AssetTags{
+		CSS: strings.TrimRight(cssLinks.String(), "\n"),
+		JS:  strings.TrimRight(jsLinks.String(), "\n"),
+	}, nil
+}
+
+// loadAssetManifest returns bundles from assets.toml if present, otherwise
+// builds default bundles by scanning static/css/ and static/js/.
+func (b *Builder) loadAssetManifest(staticDir string) ([]assets.BundleConfig, error) {
+	manifestPath := filepath.Join(b.projectRoot, "assets.toml")
+	if _, err := os.Stat(manifestPath); err == nil {
+		manifest, err := assets.LoadManifest(manifestPath)
+		if err != nil {
+			return nil, fmt.Errorf("loading assets.toml: %w", err)
+		}
+		return manifest.Bundles, nil
+	}
+	return assets.DefaultBundles(staticDir)
 }
 
 // loadData reads all .toml files from the data/ directory.
@@ -272,13 +368,20 @@ func (b *Builder) loadData() (map[string]any, error) {
 	return data, nil
 }
 
-// copyStatic copies static files to the output directory.
+// copyStatic copies static files to the output directory, skipping any files
+// that were aggregated into a bundle during this build.
 func (b *Builder) copyStatic(staticDir, outputDir string) error {
 	return filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if info.IsDir() {
+			return nil
+		}
+
+		// Skip files that were included in an asset bundle.
+		if b.bundledSources[path] {
+			b.log.Detail("Skipping bundled source: %s", path)
 			return nil
 		}
 
@@ -415,7 +518,7 @@ func (b *Builder) contentItemSourcePath(item *content.ContentItem, contentDir st
 // buildListingPages auto-generates index.html pages for any content type that
 // doesn't already have one. Pagination is supported: page 1 goes to
 // outputDir/typeName/index.html, page N goes to outputDir/typeName/page/N/index.html.
-func (b *Builder) buildListingPages(ctx context.Context, index *content.SiteIndex, r *renderer.Renderer, site *renderer.SiteContext, data map[string]any) (int, error) {
+func (b *Builder) buildListingPages(ctx context.Context, index *content.SiteIndex, r *renderer.Renderer, site *renderer.SiteContext, data map[string]any, assetTags *renderer.AssetTags) (int, error) {
 	outputDir := filepath.Join(b.projectRoot, b.config.Build.OutputDir)
 	built := 0
 
@@ -481,11 +584,12 @@ func (b *Builder) buildListingPages(ctx context.Context, index *content.SiteInde
 			}
 
 			vars := renderer.TemplateVars{
-				Site:  site,
-				Page:  synthetic,
-				Data:  data,
-				Items: pageItems,
-				Pager: pager,
+				Site:   site,
+				Page:   synthetic,
+				Data:   data,
+				Items:  pageItems,
+				Pager:  pager,
+				Assets: assetTags,
 			}
 
 			html, err := r.RenderListing(synthetic, vars)

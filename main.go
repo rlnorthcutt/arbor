@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/rlnorthcutt/arbor/internal/builder"
+	"github.com/rlnorthcutt/arbor/internal/config"
 	"github.com/rlnorthcutt/arbor/internal/scaffold"
 	"github.com/rlnorthcutt/arbor/internal/server"
 	"github.com/rlnorthcutt/cmdkit/logger"
@@ -89,14 +90,25 @@ func handleNew(root string, args []string, log *logger.Logger) {
 func handleBuild(root string, args []string, log *logger.Logger, ctx context.Context) {
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
 	force := fs.Bool("force", false, "Ignore cache, full rebuild")
+	noMinify := fs.Bool("no-minify", false, "Disable CSS/JS minification")
+	noAggregate := fs.Bool("no-aggregate", false, "Disable CSS/JS aggregation into bundles")
 	fs.Parse(args) //nolint
+
+	cfg, err := loadConfig(root, log)
+	if err != nil {
+		log.Fatal("Build setup failed: %v", err)
+	}
 
 	b, err := builder.New(root, log)
 	if err != nil {
 		log.Fatal("Build setup failed: %v", err)
 	}
 
-	opts := builder.BuildOptions{Force: *force}
+	opts := builder.BuildOptions{
+		Force:           *force,
+		MinifyAssets:    effectiveBool(cfg.Assets.Minify, true, *noMinify),
+		AggregateAssets: effectiveBool(cfg.Assets.Aggregate, true, *noAggregate),
+	}
 	if err := b.Build(ctx, opts); err != nil {
 		log.Fatal("Build failed: %v", err)
 	}
@@ -106,14 +118,25 @@ func handlePreview(root string, args []string, log *logger.Logger, ctx context.C
 	fs := flag.NewFlagSet("preview", flag.ExitOnError)
 	port := fs.Int("port", 8080, "Local port for preview server")
 	force := fs.Bool("force", false, "Ignore cache, force full rebuild before serving")
+	noMinify := fs.Bool("no-minify", false, "Enable minification during preview")
+	noAggregate := fs.Bool("no-aggregate", false, "Enable aggregation during preview")
 	fs.Parse(args) //nolint
+
+	cfg, err := loadConfig(root, log)
+	if err != nil {
+		log.Fatal("Preview setup failed: %v", err)
+	}
 
 	s, err := server.New(root, *port, log)
 	if err != nil {
 		log.Fatal("Preview setup failed: %v", err)
 	}
 
-	opts := builder.BuildOptions{Force: *force}
+	opts := builder.BuildOptions{
+		Force:           *force,
+		MinifyAssets:    effectiveBool(cfg.Assets.Minify, false, *noMinify),
+		AggregateAssets: effectiveBool(cfg.Assets.Aggregate, false, *noAggregate),
+	}
 	if err := s.Start(ctx, opts); err != nil {
 		log.Fatal("Preview server failed: %v", err)
 	}
@@ -134,6 +157,31 @@ func handleCheck(root string, log *logger.Logger) {
 	}
 }
 
+// loadConfig loads config.toml from root, logging a warning and returning a
+// default config if the file is missing or unparseable.
+func loadConfig(root string, log *logger.Logger) (*config.Config, error) {
+	cfg, err := config.Load(root)
+	if err != nil {
+		log.Warn("Could not load config.toml: %v", err)
+		return config.Default(), nil
+	}
+	return cfg, nil
+}
+
+// effectiveBool resolves the final bool for a toggle:
+//   - If the disableFlag is set (true), returns false.
+//   - Else if cfgVal has an explicit pointer value, uses that.
+//   - Otherwise returns modeDefault.
+func effectiveBool(cfgVal *bool, modeDefault bool, disableFlag bool) bool {
+	if disableFlag {
+		return false
+	}
+	if cfgVal != nil {
+		return *cfgVal
+	}
+	return modeDefault
+}
+
 func printHelp() {
 	fmt.Print(`Arbor - Static Site Generator
 
@@ -147,10 +195,14 @@ Commands:
                 Usage: arbor new [TYPE] [NAME]
                 Example: arbor new blog my-first-post
   build         Build the site to /public
-                Flags: --force    Ignore cache, full rebuild
+                Flags: --force         Ignore cache, full rebuild
+                       --no-minify     Disable CSS/JS minification (default: enabled)
+                       --no-aggregate  Disable CSS/JS bundling (default: enabled)
   preview       Build and serve locally with live reload
-                Flags: --port     Local port (default: 8080)
-                       --force    Ignore cache, force full rebuild
+                Flags: --port          Local port (default: 8080)
+                       --force         Ignore cache, force full rebuild
+                       --no-minify     Enable minification during preview
+                       --no-aggregate  Enable aggregation during preview
   check         Validate config, templates, and content without building
   version       Print the version
   help          Show this help message

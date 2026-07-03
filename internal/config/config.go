@@ -13,6 +13,13 @@ type Config struct {
 	Site   SiteConfig   `toml:"site"`
 	Build  BuildConfig  `toml:"build"`
 	Author AuthorConfig `toml:"author"`
+	Assets AssetsConfig `toml:"assets"`
+}
+
+// AssetsConfig controls CSS/JS aggregation and minification.
+type AssetsConfig struct {
+	Minify    *bool `toml:"minify"`
+	Aggregate *bool `toml:"aggregate"`
 }
 
 // SiteConfig holds site-wide metadata.

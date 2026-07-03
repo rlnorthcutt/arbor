@@ -27,6 +27,7 @@ type Server struct {
 	upgrader    websocket.Upgrader
 	clients     map[*websocket.Conn]bool
 	clientsMu   sync.Mutex
+	rebuildOpts builder.BuildOptions // options reused on every file-change rebuild
 }
 
 // New creates a new Server.
@@ -57,6 +58,12 @@ func New(projectRoot string, port int, log *logger.Logger) (*Server, error) {
 // Start performs an initial build then starts the file server, WebSocket server,
 // and fsnotify watcher. It blocks until ctx is cancelled.
 func (s *Server) Start(ctx context.Context, opts builder.BuildOptions) error {
+	// Store options for subsequent rebuilds (without Force, since that's one-shot).
+	s.rebuildOpts = builder.BuildOptions{
+		MinifyAssets:    opts.MinifyAssets,
+		AggregateAssets: opts.AggregateAssets,
+	}
+
 	// Initial build
 	s.log.Info("Running initial build...")
 	if err := s.builder.Build(ctx, opts); err != nil {
@@ -166,7 +173,7 @@ func (s *Server) Start(ctx context.Context, opts builder.BuildOptions) error {
 							return
 						}
 						s.builder = newBuilder
-						if err := s.builder.Build(ctx, builder.BuildOptions{}); err != nil {
+						if err := s.builder.Build(ctx, s.rebuildOpts); err != nil {
 							s.log.Warn("Rebuild failed: %v", err)
 							return
 						}
