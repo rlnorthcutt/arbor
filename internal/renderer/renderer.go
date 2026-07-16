@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +84,21 @@ func registerFilters() {
 			format = "January 2, 2006"
 		}
 		return pongo2.AsValue(t.Format(format)), nil
+	})
+
+	// sortbydate sorts a []*content.ContentItem slice by Date descending (newest first).
+	// Usage in templates: {% for item in Items|sortbydate %}
+	pongo2.RegisterFilter("sortbydate", func(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+		items, ok := in.Interface().([]*content.ContentItem)
+		if !ok {
+			return in, nil
+		}
+		sorted := make([]*content.ContentItem, len(items))
+		copy(sorted, items)
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].Date.After(sorted[j].Date)
+		})
+		return pongo2.AsValue(sorted), nil
 	})
 }
 
